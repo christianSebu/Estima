@@ -1,5 +1,20 @@
 # Spec technique — Estima (Module de Valorisation Immobilière)
 
+## État au 14/09/2026
+
+**V1 livrée et déployée en production** : https://estima-blue.vercel.app (repo github.com/christianSebu/Estima). Les 8 départements d'Île-de-France sont ingérés (352 408 transactions DVF, 2023-2025). Intégré à Patrimo et Locatis (voir §8 ci-dessous, mis à jour).
+
+**Écarts par rapport au plan initial :**
+- **§2/§4.1 — pas de section cadastrale via BAN.** L'API BAN ne fournit pas de section cadastrale exploitable au géocodage. La section stockée en base est en fait extraite de `id_parcelle` dans les données DVF elles-mêmes (positions 8-10 du code parcelle), et n'est de toute façon utilisée nulle part dans l'algo de comparables.
+- **§4 point 2 — élargissement par rayon plutôt que "commune limitrophe".** `geo.api.gouv.fr` n'expose plus de champ d'adjacence administrative entre communes (retiré de l'API). Remplacé par un élargissement géographique par rayon croissant (3 → 20 km, distance haversine sur les lat/lon déjà en cache) quand une commune a moins de 5 comparables — fonctionne aussi bien en zone dense qu'en zone rurale, contrairement à une liste de communes limitrophes figée.
+- **§4 point 4 — DPE non implémenté en V1** (conforme à §7 qui l'excluait déjà explicitement, mais le tableau de coefficients du point 4 pouvait laisser penser le contraire). L'ajustement "extérieur" est une **valeur fixe (+5 %)**, non modulée par la surface extérieure comme suggéré — le schéma `Property` ne capture qu'un booléen `hasOutdoor`, pas de surface dédiée. Le seuil "étage élevé" est fixé arbitrairement au **4ᵉ étage** (non précisé par la spec). Tous les coefficients = milieu des fourchettes indiquées ; calibrage en cours (voir plus bas).
+- **§4 point 5 — score de confiance** implémenté via un **coefficient de variation normalisé** (dispersion relative, plafonné à 0.5) plutôt qu'un écart-type brut, pour rester comparable d'un marché à l'autre.
+- **§6 — pipeline d'ingestion basé sur geo-dvf (Etalab)**, pas le fichier brut DGFiP. `geo-dvf` est déjà géocodé (lat/lon par transaction), ce qui évite de geocoder ~350k transactions une par une via l'API BAN. Contrepartie : c'est une version dérivée/communautaire du DVF officiel, pas le fichier brut de la DGFiP.
+- **§8 — intégration Locatis différente du plan.** Pas seulement "à la création + 1x/an" : Locatis a un outil d'estimation ad-hoc dans `/outils` (indépendant de tout bien), **et** une estimation des biens réels (Immeubles/Lots), avec une case explicite "bien unique" sur l'Immeuble pour distinguer une colocation (un seul bien physique, plusieurs lots = chambres) d'un vrai immeuble multi-appartements (chaque lot valorisé indépendamment) — cas non anticipé par la spec initiale.
+- **§9 point 2 — calibrage en cours, incrémental.** 1 point réel à ce jour (39 rue Raymond Counil, Chelles — vente DVF confirmée à 195 000 €, estimation Estima à -3,3 % avec caractéristiques complètes). Approche choisie : ajuster au fil de l'eau à chaque nouveau point de comparaison plutôt que d'attendre un lot de 2-3 biens.
+
+**Backlog restant :** #12 (calibrage, ouvert exprès) ; #16-20 (V2, non commencés) ; #21 (V3 Rwanda, optionnel).
+
 ## 0. Contexte et objectif
 
 Service indépendant qui estime la valeur vénale d'un bien immobilier à partir de son adresse et de ses caractéristiques. Consommé en HTTP par **Locatis** (gestion locative) et **Patrimo** (agrégateur patrimonial), et réutilisable pour d'autres projets futurs (acquisition TPE, etc.).
