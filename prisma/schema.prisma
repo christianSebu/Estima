@@ -1,0 +1,75 @@
+// Estima — schéma V1 (voir specs-module-valorisation-immobiliere.md, chapitre 3)
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum PropertyType {
+  APPARTEMENT
+  MAISON
+}
+
+enum PropertyCondition {
+  NEUF
+  BON_ETAT
+  A_RENOVER
+}
+
+model Property {
+  id           String              @id @default(cuid())
+  address      String
+  postalCode   String
+  city         String
+  inseeCode    String
+  latitude     Float
+  longitude    Float
+  propertyType PropertyType
+  surface      Float
+  rooms        Int
+  floor        Int?
+  hasElevator  Boolean?
+  hasOutdoor   Boolean?
+  hasParking   Boolean?
+  condition    PropertyCondition?
+  dpeClass     String?
+  sourceApp    String
+  externalRef  String?
+  createdAt    DateTime            @default(now())
+  valuations   Valuation[]
+
+  @@index([sourceApp, externalRef])
+}
+
+model Valuation {
+  id              String   @id @default(cuid())
+  propertyId      String
+  property        Property @relation(fields: [propertyId], references: [id])
+  estimatedValue  Float
+  pricePerSqm     Float
+  confidenceScore Float
+  comparablesUsed Int
+  methodology     String
+  computedAt      DateTime @default(now())
+
+  @@index([propertyId])
+}
+
+model DvfTransactionCache {
+  id              String       @id @default(cuid())
+  inseeCode       String
+  section         String?
+  propertyType    PropertyType
+  surface         Float
+  price           Float
+  pricePerSqm     Float
+  transactionDate DateTime
+  latitude        Float
+  longitude       Float
+
+  @@index([inseeCode, propertyType])
+}
