@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Estima — architecture</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist&family=Geist+Mono&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #ffffff;
+    --ink: #171717;
+    --card: #FFFFFF;
+    --border: #E2E2DE;
+    --accent: #3B5BFF;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0a0a0a;
+      --ink: #ededed;
+      --card: #1B1E27;
+      --border: #2A2E3A;
+      --accent: #7C93FF;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Geist Mono', system-ui, sans-serif;
+    padding: clamp(20px, 4vw, 48px) 20px 48px;
+  }
+  main { max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; }
+  .eyebrow {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    opacity: 0.6;
+  }
+  h1 { font-family: 'Geist', system-ui, sans-serif; font-size: clamp(24px, 3.5vw, 34px); margin: 4px 0; }
+  .summary { max-width: 70ch; opacity: 0.8; line-height: 1.55; font-size: 14.5px; }
+  .panel {
+    border: 1px solid var(--border);
+    background: var(--card);
+    border-radius: 14px;
+    padding: clamp(12px, 2vw, 24px);
+    overflow-x: auto;
+  }
+  .legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 12.5px; opacity: 0.75; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .swatch { width: 22px; height: 0; border-top: 2px solid var(--accent); }
+  .swatch.dashed { border-top: 2px dashed var(--ink); opacity: 0.5; }
+  h2 { font-family: 'Geist', system-ui, sans-serif; font-size: 17px; margin: 0 0 10px; }
+  ul.facts { list-style: none; margin: 0; padding: 0; columns: 2; column-gap: 24px; font-size: 13px; }
+  ul.facts li { break-inside: avoid; padding: 5px 0; border-bottom: 1px solid var(--border); }
+  .fact-cat { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.55; margin-right: 6px; }
+  code { font-family: 'JetBrains Mono', monospace; font-size: 11px; opacity: 0.6; }
+  .dropped { font-size: 12.5px; background: rgba(255, 180, 0, 0.12); border: 1px solid rgba(255, 180, 0, 0.4); border-radius: 10px; padding: 10px 14px; }
+  footer { font-family: 'JetBrains Mono', monospace; font-size: 11px; opacity: 0.5; text-align: center; }
+  @media (max-width: 640px) { ul.facts { columns: 1; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <span class="eyebrow">Estima · généré par archtrace</span>
+    <h1>Estima — architecture</h1>
+    <p class="summary">Estima est une application Next.js hébergée sur Vercel. Le navigateur charge la page d'accueil et appelle des routes API (propriétés, estimations, import DVF admin) exécutées côté serveur. Ces routes lisent et écrivent dans une base PostgreSQL via Prisma, avec trois modèles : Property, Valuation et DvfTransactionCache.</p>
+  </header>
+
+  <div class="panel">
+    <pre class="mermaid">flowchart TB
+  subgraph n_client["Client"]
+    n_core_client["Navigateur"]
+  end
+  subgraph n_app["Application (Next.js)"]
+    n_route__["Page /"]
+    n_core_app["Code serveur Next.js"]
+    n_route__api_properties["/api/properties"]
+    n_route__api_valuations["/api/valuations"]
+    n_route__api_valuations__propertyId_["/api/valuations/[propertyId]"]
+    n_route__api_admin_dvf_import["/api/admin/dvf-import"]
+  end
+  subgraph n_data["Données"]
+    n_service_prisma["Prisma"]
+    n_model_property["Property"]
+    n_model_valuation["Valuation"]
+    n_model_dvftransactioncache["DvfTransactionCache"]
+    n_infra_database["PostgreSQL"]
+  end
+  subgraph n_infra["Infrastructure"]
+    n_infra_vercel["Vercel"]
+  end
+  n_core_client -->|charge la page| n_route__
+  n_core_client -->|appelle| n_route__api_properties
+  n_core_client -->|appelle| n_route__api_valuations
+  n_core_client -->|appelle| n_route__api_valuations__propertyId_
+  n_route__api_properties -->|exécuté par| n_core_app
+  n_route__api_valuations -->|exécuté par| n_core_app
+  n_route__api_valuations__propertyId_ -->|exécuté par| n_core_app
+  n_route__api_admin_dvf_import -->|exécuté par| n_core_app
+  n_core_app -->|requêtes ORM| n_service_prisma
+  n_service_prisma -->|SQL| n_infra_database
+  n_infra_database -->|stocke| n_model_property
+  n_infra_database -->|stocke| n_model_valuation
+  n_route__api_admin_dvf_import -.->|alimente| n_model_dvftransactioncache
+  n_infra_vercel -->|héberge| n_core_app
+  click n_route__ "https://github.com/christianSebu/Estima/blob/main/src/app/page.tsx" "src/app/page.tsx"
+  click n_route__api_properties "https://github.com/christianSebu/Estima/blob/main/src/app/api/properties/route.ts" "src/app/api/properties/route.ts"
+  click n_route__api_valuations "https://github.com/christianSebu/Estima/blob/main/src/app/api/valuations/route.ts" "src/app/api/valuations/route.ts"
+  click n_route__api_valuations__propertyId_ "https://github.com/christianSebu/Estima/blob/main/src/app/api/valuations/[propertyId]/route.ts" "src/app/api/valuations/[propertyId]/route.ts"
+  click n_route__api_admin_dvf_import "https://github.com/christianSebu/Estima/blob/main/src/app/api/admin/dvf-import/route.ts" "src/app/api/admin/dvf-import/route.ts"
+  click n_service_prisma "https://github.com/christianSebu/Estima/blob/main/package.json" "package.json"
+  click n_model_property "https://github.com/christianSebu/Estima/blob/main/prisma/schema.prisma#L23" "prisma/schema.prisma"
+  click n_model_valuation "https://github.com/christianSebu/Estima/blob/main/prisma/schema.prisma#L48" "prisma/schema.prisma"
+  click n_model_dvftransactioncache "https://github.com/christianSebu/Estima/blob/main/prisma/schema.prisma#L62" "prisma/schema.prisma"
+  click n_infra_database "https://github.com/christianSebu/Estima/blob/main/prisma/schema.prisma" "prisma/schema.prisma"</pre>
+    <div class="legend">
+      <div class="legend-item"><span class="swatch"></span> flux à la demande</div>
+      <div class="legend-item"><span class="swatch dashed"></span> planifié / infrastructure</div>
+      <div class="legend-item">clique un nœud pour ouvrir le fichier source sur GitHub</div>
+    </div>
+  </div>
+
+  
+
+  <div class="panel">
+    <h2>Faits extraits (11)</h2>
+    <ul class="facts">
+      <li><span class="fact-cat">Base de données</span> Prisma <code>package.json</code></li>
+<li><span class="fact-cat">Modèle de données</span> Property <code>prisma/schema.prisma:23</code></li>
+<li><span class="fact-cat">Modèle de données</span> Valuation <code>prisma/schema.prisma:48</code></li>
+<li><span class="fact-cat">Modèle de données</span> DvfTransactionCache <code>prisma/schema.prisma:62</code></li>
+<li><span class="fact-cat">Infrastructure</span> PostgreSQL <code>prisma/schema.prisma</code></li>
+<li><span class="fact-cat">Page</span> / <code>src/app/page.tsx</code></li>
+<li><span class="fact-cat">API</span> /api/valuations <code>src/app/api/valuations/route.ts</code></li>
+<li><span class="fact-cat">API</span> /api/properties <code>src/app/api/properties/route.ts</code></li>
+<li><span class="fact-cat">API</span> /api/admin/dvf-import <code>src/app/api/admin/dvf-import/route.ts</code></li>
+<li><span class="fact-cat">API</span> /api/valuations/[propertyId] <code>src/app/api/valuations/[propertyId]/route.ts</code></li>
+<li><span class="fact-cat">Hébergement</span> Vercel</li>
+    </ul>
+  </div>
+
+  <footer>archtrace · thème détecté depuis le dépôt</footer>
+</main>
+<script>
+  const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: "base",
+    themeVariables: {
+      primaryColor: isDark ? "#1B1E27" : "#FFFFFF",
+      primaryTextColor: isDark ? "#ededed" : "#171717",
+      primaryBorderColor: isDark ? "#2A2E3A" : "#E2E2DE",
+      lineColor: isDark ? "#7C93FF" : "#3B5BFF",
+      background: isDark ? "#0a0a0a" : "#ffffff",
+      fontFamily: "'Geist Mono', system-ui, sans-serif",
+      clusterBkg: isDark ? "#0a0a0a" : "#ffffff",
+      clusterBorder: isDark ? "#2A2E3A" : "#E2E2DE",
+    },
+  });
+</script>
+</body>
+</html>
