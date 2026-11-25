@@ -73,3 +73,15 @@ model DvfTransactionCache {
 
   @@index([inseeCode, propertyType])
 }
+
+// Suivi des imports DVF par département (#17) : années chargées et
+// empreinte des fichiers geo-dvf correspondants (ETag par année). Le cron
+// ne recharge un département que si cette empreinte a changé, c'est-à-dire
+// à chaque publication semestrielle de la DGFiP.
+model DvfImport {
+  department      String   @id
+  years           Int[]
+  sourceSignature String
+  count           Int
+  importedAt      DateTime @default(now()) @updatedAt
+}

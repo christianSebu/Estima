@@ -29,14 +29,48 @@ export interface DvfTransaction {
   longitude: number;
 }
 
-async function downloadGeoDvfCsv(department: string, year: number): Promise<string> {
-  const url = `${GEO_DVF_BASE_URL}/${year}/departements/${department}.csv.gz`;
-  const response = await fetch(url, { signal: AbortSignal.timeout(60_000) });
+const geoDvfUrl = (department: string, year: number) => `${GEO_DVF_BASE_URL}/${year}/departements/${department}.csv.gz`;
+
+async function downloadGeoDvfCsv(department: string, year: number): Promise<{ csv: string; etag: string | null }> {
+  const response = await fetch(geoDvfUrl(department, year), { signal: AbortSignal.timeout(60_000) });
   if (!response.ok) {
     throw new Error(`Téléchargement geo-dvf échoué (département ${department}, ${year}) : ${response.status}`);
   }
   const gzipped = Buffer.from(await response.arrayBuffer());
-  return gunzipSync(gzipped).toString("utf-8");
+  return { csv: gunzipSync(gzipped).toString("utf-8"), etag: response.headers.get("etag") };
+}
+
+// ETag du fichier geo-dvf d'un département pour une année (#17), sans le
+// télécharger : il change à chaque republication. null si l'année n'est pas
+// (encore) publiée.
+export async function geoDvfEtag(department: string, year: number): Promise<string | null> {
+  const response = await fetch(geoDvfUrl(department, year), { method: "HEAD", signal: AbortSignal.timeout(15_000) });
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    throw new Error(`Vérification geo-dvf échouée (département ${department}, ${year}) : ${response.status}`);
+  }
+  return response.headers.get("etag");
+}
+
+// Nombre d'années gardées en cache : fenêtre de comparables de 24 mois
+// (spec §4) + une année de marge pour les communes peu actives.
+export const DVF_WINDOW_YEARS = 3;
+const REFERENCE_DEPARTMENT = "75";
+
+// Les 3 dernières années publiées par geo-dvf, à la date donnée. La DGFiP
+// publie deux fois par an : l'année N n'apparaît qu'en cours d'année N+1.
+export async function availableDvfYears(now = new Date()): Promise<number[]> {
+  for (let latest = now.getUTCFullYear(); latest > now.getUTCFullYear() - 3; latest--) {
+    if (await geoDvfEtag(REFERENCE_DEPARTMENT, latest)) {
+      return Array.from({ length: DVF_WINDOW_YEARS }, (_, i) => latest - DVF_WINDOW_YEARS + 1 + i);
+    }
+  }
+  throw new Error("Aucune année DVF publiée trouvée sur geo-dvf");
+}
+
+// Empreinte des fichiers source d'un département : « année:etag » par année.
+export function sourceSignature(etags: { year: number; etag: string | null }[]): string {
+  return etags.map(({ year, etag }) => `${year}:${etag ?? "absent"}`).join(",");
 }
 
 // Format id_parcelle DGFiP : code commune (5) + code préfixe (3) + section (2) + numéro (4) = 14 caractères.
@@ -93,7 +127,10 @@ export function parseDvfTransactions(csv: string): DvfTransaction[] {
   return transactions;
 }
 
-export async function fetchDvfTransactions(department: string, year: number): Promise<DvfTransaction[]> {
-  const csv = await downloadGeoDvfCsv(department, year);
-  return parseDvfTransactions(csv);
+export async function fetchDvfTransactions(
+  department: string,
+  year: number
+): Promise<{ transactions: DvfTransaction[]; etag: string | null }> {
+  const { csv, etag } = await downloadGeoDvfCsv(department, year);
+  return { transactions: parseDvfTransactions(csv), etag };
 }

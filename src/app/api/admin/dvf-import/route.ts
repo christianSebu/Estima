@@ -1,5 +1,5 @@
 import { isAuthorized } from "@/lib/auth/api-token";
-import { ingestDepartment, DEFAULT_DVF_YEARS } from "@/lib/dvf/ingest";
+import { ingestDepartment } from "@/lib/dvf/ingest";
 
 // L'ingestion peut prendre plusieurs dizaines de secondes (téléchargement
 // + parsing de plusieurs années de CSV, purge + réinsertion) — au-delà du
@@ -30,7 +30,8 @@ export async function POST(request: Request) {
     );
   }
 
-  let yearsInput: number[] = DEFAULT_DVF_YEARS;
+  // Par défaut : les dernières années publiées (voir availableDvfYears).
+  let yearsInput: number[] | undefined;
   if (years !== undefined) {
     if (!Array.isArray(years) || !years.every((y) => typeof y === "number" && Number.isInteger(y))) {
       return Response.json({ error: "years doit être un tableau d'entiers" }, { status: 400 });

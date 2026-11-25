@@ -1,9 +1,5 @@
 import { prisma } from "@/lib/db";
-import { fetchDvfTransactions } from "@/lib/dvf/geodvf";
-
-// Fenêtre de comparables = 24 mois (spec §4) ; on garde une année de plus en
-// cache pour rester dense en transactions sur les communes peu actives.
-export const DEFAULT_DVF_YEARS = [2023, 2024, 2025];
+import { availableDvfYears, fetchDvfTransactions, sourceSignature, type DvfTransaction } from "@/lib/dvf/geodvf";
 
 export interface IngestResult {
   department: string;
@@ -11,28 +7,36 @@ export interface IngestResult {
   count: number;
 }
 
+const BATCH_SIZE = 2000;
+
 // "Rafraîchissement" du cache pour un département : on remplace entièrement
 // les transactions déjà en cache pour ce département plutôt que de tenter un
 // upsert incrémental (pas d'identifiant stable exposé par geo-dvf côté cache).
-export async function ingestDepartment(
-  department: string,
-  years: number[] = DEFAULT_DVF_YEARS
-): Promise<IngestResult> {
-  const transactions = [];
-  for (const year of years) {
-    transactions.push(...(await fetchDvfTransactions(department, year)));
+// Années par défaut : les dernières publiées (fenêtre glissante, #17).
+export async function ingestDepartment(department: string, years?: number[]): Promise<IngestResult> {
+  const yearsToLoad = years ?? (await availableDvfYears());
+  const transactions: DvfTransaction[] = [];
+  const etags: { year: number; etag: string | null }[] = [];
+  for (const year of yearsToLoad) {
+    const fetched = await fetchDvfTransactions(department, year);
+    transactions.push(...fetched.transactions);
+    etags.push({ year, etag: fetched.etag });
   }
 
-  await prisma.dvfTransactionCache.deleteMany({
-    where: { inseeCode: { startsWith: department } },
-  });
+  // Suppression et réinsertion dans une même transaction (#17) : pendant un
+  // rafraîchissement, les estimations continuent de voir l'ancien cache au
+  // lieu d'une commune vide.
+  await prisma.$transaction(
+    async (tx) => {
+      await tx.dvfTransactionCache.deleteMany({ where: { inseeCode: { startsWith: department } } });
+      for (let i = 0; i < transactions.length; i += BATCH_SIZE) {
+        await tx.dvfTransactionCache.createMany({ data: transactions.slice(i, i + BATCH_SIZE) });
+      }
+      const suivi = { years: yearsToLoad, sourceSignature: sourceSignature(etags), count: transactions.length };
+      await tx.dvfImport.upsert({ where: { department }, create: { department, ...suivi }, update: suivi });
+    },
+    { timeout: 240_000, maxWait: 10_000 }
+  );
 
-  const BATCH_SIZE = 2000;
-  for (let i = 0; i < transactions.length; i += BATCH_SIZE) {
-    await prisma.dvfTransactionCache.createMany({
-      data: transactions.slice(i, i + BATCH_SIZE),
-    });
-  }
-
-  return { department, years, count: transactions.length };
+  return { department, years: yearsToLoad, count: transactions.length };
 }
