@@ -13,8 +13,8 @@ export interface RefreshReport {
   departments: { department: string; status: RefreshStatus; count?: number; error?: string }[];
 }
 
-// Rafraîchissement automatique du cache DVF (#17), appelé chaque jour par le
-// cron. Pour chaque département, compare l'empreinte des fichiers geo-dvf
+// Rafraîchissement automatique du cache DVF (#17), appelé chaque lundi par le
+// cron (vercel.json). Pour chaque département, compare l'empreinte des fichiers geo-dvf
 // (requêtes HEAD, sans téléchargement) à celle du dernier import : seuls les
 // départements dont la source a changé sont rechargés — en pratique deux fois
 // par an, à chaque publication DGFiP. Au-delà de `budgetMs`, les départements
